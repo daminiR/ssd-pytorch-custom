@@ -25,7 +25,7 @@ class SSD(nn.Module):
         head: "multibox head" consists of loc and conf conv layers
     """
 
-    def __init__(self, phase, size, base, extras, head, num_classes):
+    def __init__(self, phase, size, base, extras, head, num_classes, confidence_threshold=0.01):
         super(SSD, self).__init__()
         self.phase = phase
         self.num_classes = num_classes
@@ -51,7 +51,7 @@ class SSD(nn.Module):
             self.detect = Detect(num_classes=self.num_classes,
                                  bkg_label=0,
                                  top_k=200,
-                                 conf_thresh=0.01,
+                                 conf_thresh=confidence_threshold,
                                  nms_thresh=0.445)
 
     def forward(self, x):
@@ -202,7 +202,7 @@ mbox = {
     '512': [],
 }
 
-def build_ssd(phase, size=300, num_classes=2):
+def build_ssd(phase, size=300, num_classes=2, confidence_threshold=0.01):
     if phase != "test" and phase != "train":
         print("ERROR: Phase: " + phase + " not recognized")
         return
@@ -215,4 +215,4 @@ def build_ssd(phase, size=300, num_classes=2):
                                      cfg = mbox[str(size)],
                                      num_classes=num_classes)
 
-    return SSD(phase, size, base_, extras_, head_, num_classes)
+    return SSD(phase, size, base_, extras_, head_, num_classes, confidence_threshold)

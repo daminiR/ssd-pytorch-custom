@@ -45,6 +45,8 @@ parser.add_argument('--save_folder', default='eval/', type=str,
                     help='File path to save results')
 parser.add_argument('--confidence_threshold', default=0.01, type=float,
                     help='Detection confidence threshold')
+parser.add_argument('--overlap_threshold', default=0.3, type=float,
+                    help='Detection box overlap threshold')
 parser.add_argument('--top_k', default=5, type=int,
                     help='Further restrict the number of predictions to parse')
 parser.add_argument('--cuda', default=True, type=str2bool,
@@ -220,12 +222,10 @@ def write_results_file(all_boxes, dataset):
 
                 if args.dataset == 'Custom':
                     for k in range(dets.shape[0]):
-                        # If score is higher than given threshold
-                        if dets[k, -1] > args.confidence_threshold:
-                            f.write('{:s}\t{:.3f}\t{:.1f}\t{:.1f}\t{:.1f}\t{:.1f}\n'.
-                                    format(index, dets[k, -1],
-                                        dets[k, 0] + 1, dets[k, 1] + 1,
-                                        dets[k, 2] + 1, dets[k, 3] + 1))
+                        f.write('{:s}\t{:.3f}\t{:.1f}\t{:.1f}\t{:.1f}\t{:.1f}\n'.
+                                format(index, dets[k, -1],
+                                    dets[k, 0] + 1, dets[k, 1] + 1,
+                                    dets[k, 2] + 1, dets[k, 3] + 1))
                         if k == 0: # draw first rect on input image
                             img = cv2.rectangle(img, (dets[k, 0], dets[k, 1]),
                                 (dets[k, 2], dets[k, 3]), 
@@ -236,11 +236,7 @@ def write_results_file(all_boxes, dataset):
     # TODO:  add COCO
 
 
-def do_python_eval(use_07=True):
-    if not os.path.isdir(cache_dir):
-        os.makedirs(cache_dir)
-    if not os.path.isdir(output_dir):
-        os.makedirs(output_dir)
+def do_python_eval(use_07=False):
     aps = []
     # The PASCAL VOC metric changed in 2010
     print('VOC07 metric? ' + ('Yes' if use_07 else 'No'))
@@ -248,7 +244,7 @@ def do_python_eval(use_07=True):
         filename = get_voc_results_file_template(set_type, cls_name)
         rec, prec, ap = voc_eval(
            filename, annopath, imgsetpath.format(set_type), cls_name,
-           ovthresh=0.3, use_07_metric=use_07)
+           ovthresh=args.overlap_threshold, use_07_metric=use_07)
         aps += [ap]
         print('AP for {} = {:.4f}'.format(cls_name, ap))
         with open(os.path.join(output_dir, cls_name + '_pr.pkl'), 'wb') as f:
@@ -445,6 +441,10 @@ def voc_eval(detpath,
 
 def test_net(save_folder, net, cuda, dataset, transform, top_k,
              im_size=300, thresh=0.05):
+    if not os.path.isdir(cache_dir):
+        os.makedirs(cache_dir)
+    if not os.path.isdir(output_dir):
+        os.makedirs(output_dir)
     num_images = len(dataset)
     # all detections are collected into:
     #    all_boxes[cls][image] = N x 5 array of detections in
@@ -502,7 +502,7 @@ if __name__ == '__main__':
         cfg = custom
                    # +1 for background
     net = build_ssd(phase='test', size=cfg['min_dim'], 
-        num_classes=cfg['num_classes'])
+        num_classes=cfg['num_classes'], confidence_threshold=args.confidence_threshold)
     net.load_state_dict(torch.load(args.trained_model))
     net.eval()
     print('Finished loading model!')
