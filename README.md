@@ -4,22 +4,23 @@ This PyTorch for SSD playground is a staging environment for changes to the orig
 
 Added to original repo:
 
-* Custom dataset loader - `custom.py`
+* Custom dataset loader - `custom.py` (VGG Image Annotator input)
 * Updates to working order of `train.py` and assoicated files
 * Added the latest recommendation for specifying a GPU/CUDA device (`.to(device`) for nets and variables
 * Templated structure for train and test data and dealing with more consistently in code
 
 In the works:
 
+* [ ] Remove `'max_iter': 13, # number of training boxes id'd / batch_size` (e.g.) from `config.py` and use of `cfg['max_iter']` in `train.py` and make this built-in calc
 * [ ] Completely remove `args.cuda` in lieu of auto-detecting
 * [ ] Generalize custom data loader for multiple annotators (as in `custom.py` which uses the [VGG Image Annotator](http://www.robots.ox.ac.uk/~vgg/software/via/))
   * [ ] Reader for Open Images v4 boxes format(http://www.robots.ox.ac.uk/~vgg/software/via/)
   * [ ] Reader for Visual Object Tagging Tool (https://github.com/Microsoft/VoTT)
 * [ ] Add better docstrings and comments to `train.py`, `test.py` and `eval.py`
 * [ ] Ensure still functioning on original COCO and VOC data as per original repo
-* [ ] Update to working order:
-  * [ ] `test.py`
+* [ ] Update other files:
   * [ ] `eval.py`
+    * [ ] Get rid of `imgsetpath = os.path.join(args.dataset_root, 'imagenames.txt')` in favor of just glob
   * [ ] `demo` code
 
 For custom, make sure to update the number of iterations in the `config.py` (`max_iter`) (if minibatch size is 1, `max_iter` equals the number of input images in the training set).

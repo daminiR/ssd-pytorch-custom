@@ -1,6 +1,6 @@
 """SSD model training script
 Example usage:
-python train.py --dataset Custom --dataset_root data/image_data/train --bat0 --cuda True --save_folder weights
+python train.py --dataset Custom --dataset_root data/image_data/train --cuda False --save_folder weights --num_workers 0 --start_iter 0 --batch_size 2
 """
 
 from data import *
@@ -199,7 +199,7 @@ def train():
         loc_loss += loss_l.data.item()
         conf_loss += loss_c.data.item()
 
-        if iteration % 10 == 0:
+        if iteration % 2 == 0:
             print('timer: %.4f sec.' % (t1 - t0))
             print('iter ' + repr(iteration) + ' || Loss: %.4f ||' % (loss.data.item()), end=' ')
 

@@ -2,6 +2,8 @@
     @longcw faster_rcnn_pytorch: https://github.com/longcw/faster_rcnn_pytorch
     @rbgirshick py-faster-rcnn https://github.com/rbgirshick/py-faster-rcnn
     Licensed under The MIT License [see LICENSE for details]
+
+    python eval.py --dataset Custom --trained_model weights/Custom.pth --save_folder eval --dataset_root data/image_data/test --confidence_threshold 0.5 --overlap_threshold 0.05
 """
 
 from __future__ import print_function
@@ -226,10 +228,11 @@ def write_results_file(all_boxes, dataset):
                                 format(index, dets[k, -1],
                                     dets[k, 0] + 1, dets[k, 1] + 1,
                                     dets[k, 2] + 1, dets[k, 3] + 1))
-                        if k == 0: # draw first rect on input image
-                            img = cv2.rectangle(img, (dets[k, 0], dets[k, 1]),
-                                (dets[k, 2], dets[k, 3]), 
-                                (0,255,0), 3)
+                        # if k == 0: # draw first rect on input image
+                        #     print(dets[:,0])
+                        #     img = cv2.rectangle(img, (dets[k, 0], dets[k, 1]),
+                        #         (dets[k, 2], dets[k, 3]), 
+                        #         (0,255,0), 3)
                     cv2.imwrite(os.path.join(output_dir, 'recs_' + index), img)
                                            
 
@@ -436,6 +439,8 @@ def voc_eval(detpath,
         prec = -1.
         ap = -1.
 
+    print(rec, prec, ap)
+
     return rec, prec, ap
 
 
@@ -458,7 +463,7 @@ def test_net(save_folder, net, cuda, dataset, transform, top_k,
     det_file = os.path.join(output_dir, 'detections.pkl')
 
     for i in range(num_images):
-        im, gt, h, w, _ = dataset.pull_item(i)
+        im, gt, h, w, img_id = dataset.pull_item(i)
 
         x = Variable(im.unsqueeze(0))
         x = x.to(device)
@@ -471,6 +476,7 @@ def test_net(save_folder, net, cuda, dataset, transform, top_k,
             dets = detections[0, j, :]
             mask = dets[:, 0].gt(0.).expand(5, dets.size(0)).t()
             dets = torch.masked_select(dets, mask).view(-1, 5)
+            print(dets)
             if dets.dim() < 2: # == 0
                 continue
             boxes = dets[:, 1:]
@@ -483,12 +489,18 @@ def test_net(save_folder, net, cuda, dataset, transform, top_k,
                                   scores[:, np.newaxis])).astype(np.float32,
                                                                  copy=False)
             all_boxes[j][i] = cls_dets
+            # draw_boxes(filename=img_id, )
 
         print('im_detect: {:d}/{:d} {:.3f}s'.format(i + 1,
                                                     num_images, detect_time))
 
-    with open(det_file, 'wb') as f:
-        pickle.dump(all_boxes, f, pickle.HIGHEST_PROTOCOL)
+    # with open(det_file, 'wb') as f:
+    #     pickle.dump(all_boxes, f, pickle.HIGHEST_PROTOCOL)
+    with open(det_file.replace('pkl', 'txt'), 'w') as f:
+        for bbox in all_boxes:
+            print(bbox)
+            f.write('\t'.join(bbox))
+            f.write('\n')
 
     print('Evaluating detections')
     write_results_file(all_boxes, dataset)
