@@ -99,6 +99,7 @@ else:
 imgpath = os.path.join(args.dataset_root,  'test', '%s.*')
 # imgsetpath = os.path.join(args.dataset_root, 'ImageSets',
 #                           'Main', '{:s}.txt')
+# TODO: replace with glob
 imgsetpath = os.path.join(args.dataset_root, 'imagenames.txt')
 # YEAR = '2007'
 devkit_path = os.path.join(args.dataset_root, args.dataset)
@@ -266,7 +267,7 @@ def do_python_eval(use_07=False):
     print('--------------------------------------------------------------')
 
 
-def voc_ap(rec, prec, use_07_metric=True):
+def voc_ap(rec, prec, use_07_metric=False):
     """ ap = voc_ap(rec, prec, [use_07_metric])
     Compute VOC AP given precision and recall.
     If use_07_metric is true, uses the
@@ -305,7 +306,7 @@ def voc_eval(detpath,
              imagesetfile,
              classname,
              ovthresh=0.5,
-             use_07_metric=True):
+             use_07_metric=False):
     """rec, prec, ap = voc_eval(detpath,
                            annopath,
                            imagesetfile,
@@ -476,31 +477,32 @@ def test_net(save_folder, net, cuda, dataset, transform, top_k,
             dets = detections[0, j, :]
             mask = dets[:, 0].gt(0.).expand(5, dets.size(0)).t()
             dets = torch.masked_select(dets, mask).view(-1, 5)
-            print(dets)
             if dets.dim() < 2: # == 0
                 continue
             boxes = dets[:, 1:]
-            boxes[:, 0] *= w # x1
-            boxes[:, 2] *= w # x2
-            boxes[:, 1] *= h # y1
-            boxes[:, 3] *= h # y2
+
+            boxes[:, 0] *= w# x1
+            boxes[:, 1] *= h# y1
+            boxes[:, 2] *= w# x2     
+            boxes[:, 3] *= h# y2
+            print(boxes)
+
             scores = dets[:, 0].cpu().numpy()
             cls_dets = np.hstack((boxes.cpu().numpy(),
                                   scores[:, np.newaxis])).astype(np.float32,
                                                                  copy=False)
             all_boxes[j][i] = cls_dets
-            # draw_boxes(filename=img_id, )
 
         print('im_detect: {:d}/{:d} {:.3f}s'.format(i + 1,
                                                     num_images, detect_time))
 
-    # with open(det_file, 'wb') as f:
-    #     pickle.dump(all_boxes, f, pickle.HIGHEST_PROTOCOL)
-    with open(det_file.replace('pkl', 'txt'), 'w') as f:
-        for bbox in all_boxes:
-            print(bbox)
-            f.write('\t'.join(bbox))
-            f.write('\n')
+    with open(det_file, 'wb') as f:
+        pickle.dump(all_boxes, f, pickle.HIGHEST_PROTOCOL)
+    # with open(det_file.replace('pkl', 'txt'), 'w') as f:
+    #     for bbox in all_boxes:
+    #         print(bbox)
+    #         f.write('\t'.join(bbox))
+    #         f.write('\n')
 
     print('Evaluating detections')
     write_results_file(all_boxes, dataset)
