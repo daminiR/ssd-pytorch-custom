@@ -5,9 +5,14 @@
 *.png
 *.PNG
 
+summit_posts_urls.txt
+download_helmet_data.py
+helmets/
+
 test/
 train/
 image_data*
+
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
