@@ -1,6 +1,15 @@
-# Quick Note
+## Quickstart
 
-This PyTorch for SSD playground is a staging environment for changes to the original work and, itself, a work in progress.  It is directly based on https://github.com/amdegroot/ssd.pytorch to which, in the near future, a custom dataset feature and other improvements will be contributed as a PR.  That is, once things are a bit more stable.
+1.  Install Python packages from `requirements.txt`
+2.  Setup and enviroment with an NVIDIA GPU and CUDA 9.0
+1. Label data with VGG Image Annotator using the rectangle option (we are doing object detection here to create a tiny SSD model for devices) and place in `data/image_data/train` (images and via `.json` file)
+2.  Run the training script, e.g.,
+    `python train.py --dataset Custom --dataset_root data/image_data/train --cuda True --save_folder weights --num_workers 0 --start_iter 0 --batch_size 1`
+`
+
+## Quick Note
+
+This PyTorch for SSD update is a staging environment for changes to the original work and, itself, a work in progress.  It is directly based on https://github.com/amdegroot/ssd.pytorch to which, in the near future, a custom dataset feature and other improvements will be contributed as a PR.
 
 Added to original repo:
 
@@ -12,7 +21,7 @@ Added to original repo:
 In the works:
 
 * [ ] Remove `'max_iter': 13, # number of training boxes id'd / batch_size` (e.g.) from `config.py` and use of `cfg['max_iter']` in `train.py` and make this built-in calc
-* [ ] Completely remove `args.cuda` in lieu of auto-detecting
+* [ ] Update the usage of `args.cuda` (`args.cuda = not args.no_cuda and torch.cuda.is_available()` or similar)
 * [ ] Generalize custom data loader for multiple annotators (as in `custom.py` which uses the [VGG Image Annotator](http://www.robots.ox.ac.uk/~vgg/software/via/))
   * [ ] Reader for Open Images v4 boxes format(http://www.robots.ox.ac.uk/~vgg/software/via/)
   * [ ] Reader for Visual Object Tagging Tool (https://github.com/Microsoft/VoTT)

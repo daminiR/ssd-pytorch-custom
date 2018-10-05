@@ -1,6 +1,15 @@
 """SSD model training script
+
+Only working with CUDA support on GPU.
+Make sure to set batch size appropriately for number of images.  Epochs
+are calculated from batch size.
+
 Example usage:
-python train.py --dataset Custom --dataset_root data/image_data/train --cuda False --save_folder weights --num_workers 0 --start_iter 0 --batch_size 2
+python train.py --dataset Custom --dataset_root data/image_data/train --cuda True --save_folder weights --num_workers 0 --start_iter 0 --batch_size 1
+
+
+Currently, model is not checkpointed and the final is saved in the folder specified
+as Custom.pth.
 """
 
 from data import *
@@ -122,7 +131,7 @@ def train():
         print('Loading base network...')
         ssd_net.vgg.load_state_dict(vgg_weights)
 
-        net = net.to(device)
+    net = net.to(device)
 
     if not args.resume:
         print('Initializing weights...')
