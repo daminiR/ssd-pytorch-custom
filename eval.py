@@ -3,7 +3,8 @@
     @rbgirshick py-faster-rcnn https://github.com/rbgirshick/py-faster-rcnn
     Licensed under The MIT License [see LICENSE for details]
 
-    python eval.py --dataset Custom --trained_model weights/Custom.pth --save_folder eval --dataset_root data/image_data/test --confidence_threshold 0.5 --overlap_threshold 0.05
+    Example run command:
+    python eval.py --dataset Custom --trained_model weights/Custom.pth --save_folder eval --dataset_root data/image_data/test --confidence_threshold 0.5 --overlap_threshold 0.3
 """
 
 from __future__ import print_function
@@ -13,7 +14,7 @@ import torch.backends.cudnn as cudnn
 from torch.autograd import Variable
 from data import VOC_ROOT, VOCAnnotationTransform, VOCDetection, BaseTransform
 from data import CUSTOM_ROOT, CustomAnnotationTransform, CustomDetection, BaseTransform
-from data.custom import get_targets
+from data.custom import get_targets, center_to_corner, CUSTOM_CLASSES
 import torch.utils.data as data
 from data.config import coco, voc, custom, MEANS
 
@@ -78,16 +79,17 @@ eval_dir = os.path.join(args.dataset_root, 'eval_output')
 
 # Assign to either CPU or GPU as device
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+print('On {} device'.format(device))
 
-if torch.cuda.is_available():
-    if args.cuda:
-        torch.set_default_tensor_type('torch.cuda.FloatTensor')
-    if not args.cuda:
-        print("WARNING: It looks like you have a CUDA device, but aren't using \
-              CUDA.  Run with --cuda for optimal eval speed.")
-        torch.set_default_tensor_type('torch.FloatTensor')
-else:
-    torch.set_default_tensor_type('torch.FloatTensor')
+# if torch.cuda.is_available():
+#     if args.cuda:
+#         torch.set_default_tensor_type('torch.cuda.FloatTensor')
+#     if not args.cuda:
+#         print("WARNING: It looks like you have a CUDA device, but aren't using \
+#               CUDA.  Run with --cuda for optimal eval speed.")
+#         torch.set_default_tensor_type('torch.FloatTensor')
+# else:
+#     torch.set_default_tensor_type('torch.FloatTensor')
 
 if args.dataset == 'VOC':
     annopath = os.path.join(args.dataset_root, 'Annotations', '%s.xml')
@@ -96,11 +98,12 @@ elif args.dataset == 'Custom':
 else:
     # TODO - generalize this else
     annopath = os.path.join(args.dataset_root, 'test', 'annot', '%s.json')
+
 imgpath = os.path.join(args.dataset_root,  'test', '%s.*')
 # imgsetpath = os.path.join(args.dataset_root, 'ImageSets',
 #                           'Main', '{:s}.txt')
 # TODO: replace with glob
-imgsetpath = os.path.join(args.dataset_root, 'imagenames.txt')
+imgsetpath = os.path.join(args.dataset_root, 'testimageset.txt')
 # YEAR = '2007'
 devkit_path = os.path.join(args.dataset_root, args.dataset)
 # TODO make this an arg
@@ -129,6 +132,36 @@ class Timer(object):
             return self.average_time
         else:
             return self.diff
+
+def bbox_iou(box1, box2):
+    """
+    Returns the IoU of two bounding boxes 
+    Input boxes are expected to be in x1y1x2y2 format.
+    """
+    # DoubleTensor converts to cuda.DoubleTensor in case it's got cuda
+    box1 = box1.type(torch.DoubleTensor)
+    box2 = box2.type(torch.DoubleTensor)
+
+    #Get the coordinates of bounding boxes
+    b1_x1, b1_y1, b1_x2, b1_y2 = box1[0], box1[1], box1[2], box1[3]
+    b2_x1, b2_y1, b2_x2, b2_y2 = box2[0], box2[1], box2[2], box2[3]
+    
+    #get the corrdinates of the intersection rectangle
+    inter_rect_x1 =  torch.max(b1_x1, b2_x1)
+    inter_rect_y1 =  torch.max(b1_y1, b2_y1)
+    inter_rect_x2 =  torch.min(b1_x2, b2_x2)
+    inter_rect_y2 =  torch.min(b1_y2, b2_y2)
+    
+    #Intersection area
+    inter_area = torch.clamp(inter_rect_x2 - inter_rect_x1 + 1, min=0) * torch.clamp(inter_rect_y2 - inter_rect_y1 + 1, min=0)
+
+    #Union Area
+    b1_area = (b1_x2 - b1_x1 + 1)*(b1_y2 - b1_y1 + 1)
+    b2_area = (b2_x2 - b2_x1 + 1)*(b2_y2 - b2_y1 + 1)
+    
+    iou = inter_area / (b1_area + b2_area - inter_area)
+    
+    return iou
 
 def parse_rec(filename):
     """ Parse a PASCAL VOC xml file """
@@ -160,24 +193,26 @@ def parse_rec_custom(filename):
     # scale = np.array([width, height, width, height])
     for target_id in targets:
         objects = []
-        # img = cv2.imread(os.path.join(CUSTOM_ROOT, 'test', target_id))
-        # height, width, _ = img.shape
-        # scale = np.array([width, height, width, height])
+        img = cv2.imread(os.path.join(CUSTOM_ROOT, 'test', target_id))
+        height, width, _ = img.shape
+        scale = np.array([width, height, width, height])
         # Loop through all bboxes in an image
         for _, elem in enumerate(targets[target_id]):
-            obj_struct = {}
-            bbox = np.zeros(shape=4)
-            bbox[0] = elem['x']
-            bbox[1] = elem['y']
-            bbox[2] = bbox[0] + elem['width']
-            bbox[3] = bbox[1] + elem['height']
-            final_box = np.array(bbox)
-            # Add the new bbox to dict of lists of lists
-            obj_struct['bbox'] = final_box
-            # Filename as id to the dict TODO: grab class names
-            obj_struct['name'] = 'object'
-            obj_struct['difficult'] = 0 # False for now, no difficult gt boxes
-            objects.append(obj_struct)
+            for cls_name in labelmap:
+                obj_struct = {}
+                bbox = np.zeros(shape=4)
+                # VGG Image Annotator produces x_1, y_1, width, height
+                bbox[0] = elem['x']
+                bbox[1] = elem['y']
+                bbox[2] = bbox[0] + elem['width']
+                bbox[3] = bbox[1] + elem['height']
+                final_box = list(np.array(bbox)/scale)
+                # final_box.append(custom_class)
+                # Add the new bbox to dict of lists of lists
+                obj_struct['bbox'] = final_box
+                obj_struct['name'] = cls_name
+                obj_struct['difficult'] = 0 # False for now, no difficult gt boxes
+                objects.append(obj_struct)
         # Append all bboxes from an image to the list of images
         objects_all[target_id] = objects
     return objects_all
@@ -205,14 +240,16 @@ def get_voc_results_file_template(image_set, cls_name):
 
 
 def write_results_file(all_boxes, dataset):
-    for cls_ind, cls_name in enumerate([labelmap]):
+    for cls_ind, cls_name in enumerate(labelmap):
         print('Writing {:s} detection results file'.format(cls_name))
         filename = get_voc_results_file_template(set_type, cls_name)
         with open(filename, 'wt') as f:
-            for im_ind, index in enumerate(dataset.ids):
+            for index, im_ind in enumerate(dataset.ids):
                 # Read image so we can draw boxes
-                img = cv2.imread(os.path.join(CUSTOM_ROOT, 'test', index))
-                dets = all_boxes[cls_ind+1][im_ind]
+                img = cv2.imread(os.path.join(CUSTOM_ROOT, 'test', im_ind))
+                dets = all_boxes[cls_ind+1][index]
+                print('len dets {}'.format(len(dets)))
+                print(dets[0])
                 if dets == []:
                     continue
                 if args.dataset == 'VOC':
@@ -226,15 +263,14 @@ def write_results_file(all_boxes, dataset):
                 if args.dataset == 'Custom':
                     for k in range(dets.shape[0]):
                         f.write('{:s}\t{:.3f}\t{:.1f}\t{:.1f}\t{:.1f}\t{:.1f}\n'.
-                                format(index, dets[k, -1],
-                                    dets[k, 0] + 1, dets[k, 1] + 1,
-                                    dets[k, 2] + 1, dets[k, 3] + 1))
+                                format(im_ind, dets[k, -1],
+                                    dets[k, 0], dets[k, 1],
+                                    dets[k, 2], dets[k, 3]))
                         # if k == 0: # draw first rect on input image
-                        #     print(dets[:,0])
-                        #     img = cv2.rectangle(img, (dets[k, 0], dets[k, 1]),
-                        #         (dets[k, 2], dets[k, 3]), 
-                        #         (0,255,0), 3)
-                    cv2.imwrite(os.path.join(output_dir, 'recs_' + index), img)
+                        img = cv2.rectangle(img, (dets[k, 0], dets[k, 1]),
+                            (dets[k, 2], dets[k, 3]), 
+                            (0,255,0), 3)
+                    cv2.imwrite(os.path.join(output_dir, 'recs_' + im_ind), img)
                                            
 
     # TODO:  add COCO
@@ -244,7 +280,7 @@ def do_python_eval(use_07=False):
     aps = []
     # The PASCAL VOC metric changed in 2010
     print('VOC07 metric? ' + ('Yes' if use_07 else 'No'))
-    for i, cls_name in enumerate([labelmap]):
+    for i, cls_name in enumerate(labelmap):
         filename = get_voc_results_file_template(set_type, cls_name)
         rec, prec, ap = voc_eval(
            filename, annopath, imgsetpath.format(set_type), cls_name,
@@ -270,8 +306,8 @@ def do_python_eval(use_07=False):
 def voc_ap(rec, prec, use_07_metric=False):
     """ ap = voc_ap(rec, prec, [use_07_metric])
     Compute VOC AP given precision and recall.
-    If use_07_metric is true, uses the
-    VOC 07 11 point method (default:True).
+    If use_07_metric is falase, uses the
+    VOC 07 11 point method (default:False).
     """
     if use_07_metric:
         # 11 point metric
@@ -369,7 +405,7 @@ def voc_eval(detpath,
             bbox = np.array([x['bbox'] for x in R])
             difficult = np.array([x['difficult'] for x in R]).astype(np.bool)
             det = [False] * len(R)
-            npos = npos + sum(~difficult) # TODO: figure out general replacement for 'difficult'
+            npos = npos + np.sum(np.invert(difficult)) # TODO: figure out general replacement for 'difficult'
             class_recs[imagename] = {'bbox': bbox,
                                     'difficult': difficult,
                                     'det': det}
@@ -395,41 +431,47 @@ def voc_eval(detpath,
         nd = len(image_ids)
         tp = np.zeros(nd)
         fp = np.zeros(nd)
+        bbs = []
         for d in range(nd):
-            R = class_recs[image_ids[d]]
-            bb = BB[d, :].astype(float)
-            ovmax = -np.inf
-            BBGT = R['bbox'].astype(float)
-            if BBGT.size > 0:
-                # compute overlaps
-                # intersection
-                ixmin = np.maximum(BBGT[:, 0], bb[0])
-                iymin = np.maximum(BBGT[:, 1], bb[1])
-                ixmax = np.minimum(BBGT[:, 2], bb[2])
-                iymax = np.minimum(BBGT[:, 3], bb[3])
-                iw = np.maximum(ixmax - ixmin, 0.)
-                ih = np.maximum(iymax - iymin, 0.)
-                inters = iw * ih
-                uni = ((bb[2] - bb[0]) * (bb[3] - bb[1]) +
-                       (BBGT[:, 2] - BBGT[:, 0]) *
-                       (BBGT[:, 3] - BBGT[:, 1]) - inters)
-                overlaps = inters / uni
-                ovmax = np.max(overlaps)
-                jmax = np.argmax(overlaps)
+            target_id = image_ids[d]
+            img = cv2.imread(os.path.join(CUSTOM_ROOT, 'test', target_id))
+            height, width, _ = img.shape
+            scale = np.array([width, height, width, height])
+            bb = BB[d, :].astype(float) / scale
+            bbs.append(bb)
+            # R = class_recs[image_ids[d]]
+            # ovmax = -np.inf
+            # BBGT = R['bbox'].astype(float)
+        bbs = torch.tensor(np.asarray(bbs)).to(device)
+        R = class_recs[image_ids[d]]
+        ovmax = -np.inf
+        BBGT = torch.tensor(R['bbox'].astype(float))
+        overlaps = []
+        if int(BBGT.size(0)) > 0:
+            for BBGT_idx in range(BBGT.size(0)):
+                for bb_idx in range(bbs.shape[0]):
+                    overlap = bbox_iou(BBGT[BBGT_idx], bbs[bb_idx])
+                    overlaps.append(overlap)
+        ovmax = np.max(np.asarray(overlaps))
+        jmax = np.argmax(np.asarray(overlaps))
+        print('jmax ', jmax)
 
             if ovmax > ovthresh:
-                if not R['difficult'][jmax]:
-                    if not R['det'][jmax]:
-                        tp[d] = 1.
-                        R['det'][jmax] = 1
-                    else:
-                        fp[d] = 1.
+                # if not R['difficult'][jmax]:
+                if len(R['det']) < jmax:
+                    print('true pos!')
+                    tp[d] = 1.
+                    R['det'][jmax] = 1
+                else:
+                    fp[d] = 1.
             else:
                 fp[d] = 1.
 
         # compute precision recall
         fp = np.cumsum(fp)
         tp = np.cumsum(tp)
+        print('tp {}'.format(tp))
+        print('npos {}'.format(npos))
         rec = tp / float(npos)
         # avoid divide by zero in case the first detection matches a difficult
         # ground truth
@@ -456,7 +498,7 @@ def test_net(save_folder, net, cuda, dataset, transform, top_k,
     #    all_boxes[cls][image] = N x 5 array of detections in
     #    (x1, y1, x2, y2, score)
     all_boxes = [[[] for _ in range(num_images)]
-                 for _ in range(len([labelmap])+1)]
+                 for _ in range(len(labelmap)+1)]
 
     # timers
     _t = {'im_detect': Timer(), 'misc': Timer()}
@@ -469,7 +511,8 @@ def test_net(save_folder, net, cuda, dataset, transform, top_k,
         x = Variable(im.unsqueeze(0))
         x = x.to(device)
         _t['im_detect'].tic()
-        detections = net(x).data
+        with torch.no_grad():
+            detections = net(x)
         detect_time = _t['im_detect'].toc(average=False)
 
         # skip j = 0, because it's the background class
@@ -518,6 +561,7 @@ if __name__ == '__main__':
     net = build_ssd(phase='test', size=cfg['min_dim'], 
         num_classes=cfg['num_classes'], confidence_threshold=args.confidence_threshold)
     net.load_state_dict(torch.load(args.trained_model))
+    net = net.to(device)
     net.eval()
     print('Finished loading model!')
 
@@ -529,10 +573,10 @@ if __name__ == '__main__':
     else:
         dataset = CustomDetection(root=args.dataset_root, 
                                     image_set=[(set_type)], 
-                                    transform=BaseTransform(cfg['min_dim'], MEANS), 
+                                    transform=BaseTransform(cfg['min_dim'], MEANS),
                                     target_transform=CustomAnnotationTransform(train=False))
     
-    net = net.to(device)
+    # net = net.to(device)
     
     # Evaluation
     test_net(args.save_folder, net, args.cuda, dataset,

@@ -84,6 +84,7 @@ if not os.path.exists(args.save_folder):
 
 # If GPU is available use it, otherwise CPU
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+print('On {} device'.format(device))
 
 def train():
     if args.dataset == 'COCO':
@@ -166,7 +167,7 @@ def train():
         epoch_plot = create_vis_plot('Epoch', 'Loss', vis_title, vis_legend)
 
     data_loader = data.DataLoader(dataset,
-                                  args.batch_size,
+                                  batch_size=args.batch_size,
                                   num_workers=args.num_workers,
                                   shuffle=False, 
                                   collate_fn=detection_collate,
@@ -189,7 +190,12 @@ def train():
             adjust_learning_rate(optimizer, args.gamma, step_index)
 
         # load train data
-        images, targets = next(batch_iterator)
+        try:
+            images, targets = next(batch_iterator)
+        except StopIteration as e:
+            print('Ending iterations over data')
+            break
+
 
         with torch.no_grad():
             images = Variable(images.to(device))

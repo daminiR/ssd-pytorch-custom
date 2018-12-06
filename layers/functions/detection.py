@@ -3,6 +3,8 @@ from torch.autograd import Function
 from ..box_utils import decode, nms
 from data import voc as cfg
 
+# Assign to either CPU or GPU as device
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 class Detect(Function):
     """At test time, Detect is the final layer of SSD.  Decode location preds,
@@ -31,6 +33,8 @@ class Detect(Function):
             prior_data: (tensor) Prior boxes and variances from priorbox layers
                 Shape: [1,num_priors,4]
         """
+        loc_data = loc_data.to(device)
+        prior_data = prior_data.to(device)
         num = loc_data.size(0)  # batch size
         num_priors = prior_data.size(0)
         output = torch.zeros(num, self.num_classes, self.top_k, 5)

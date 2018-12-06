@@ -1,3 +1,5 @@
+**IMPORTANT NOTE**:  This project is for research and is not stable.  A note will be posted here for when it is ready for more general use.  Issues and/or Pull Requests are most welcome!
+
 ## Quickstart
 
 1.  Install Python packages from `requirements.txt`

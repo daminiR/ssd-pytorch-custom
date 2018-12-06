@@ -33,7 +33,7 @@ class SSD(nn.Module):
         self.cfg = custom # HARD CODED
         self.priorbox = PriorBox(self.cfg) 
         with torch.no_grad():
-            self.priors = Variable(self.priorbox.forward())
+            self.priors = self.priorbox.forward()
         self.size = size
         self.base = base
 

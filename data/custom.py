@@ -15,7 +15,18 @@ import skimage
 CUSTOM_ROOT = osp.join(HOME, 'data', 'image_data')
 print(HOME)
 # Classes do not explicitley have BG here
-CUSTOM_CLASSES = ('object')
+CUSTOM_CLASSES = ['object']
+
+def center_to_corner(center_bbox):
+    # xmin = x_c - (1/2)*width
+    center_bbox[0] = (center_bbox[0] - center_bbox[2]/2)
+    # ymin = y_c - (1/2)*height
+    center_bbox[1] = (center_bbox[1] - center_bbox[3]/2)
+    # xmax = width + xmin
+    center_bbox[2] = (center_bbox[2] + center_bbox[0])
+    # ymax = height + ymin
+    center_bbox[3] = (center_bbox[3] + center_bbox[1])
+    return center_bbox
 
 def get_targets(label_file):
     """
@@ -74,10 +85,12 @@ class CustomAnnotationTransform(object):
         # data_list = self.targets[target]
         for _, elem in enumerate(target):
             bbox = np.zeros(shape=4)
+            # VGG Image Annotator produces x_1, y_1, width, height
             bbox[0] = elem['x']
             bbox[1] = elem['y']
             bbox[2] = bbox[0] + elem['width']
             bbox[3] = bbox[1] + elem['height']
+
             final_box = list(np.array(bbox)/scale)
             final_box.append(custom_class)
             res += [final_box]  # [xmin, ymin, xmax, ymax, label_idx]
