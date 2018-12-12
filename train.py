@@ -1,19 +1,19 @@
 """SSD model training script
 
-Only working with CUDA support on GPU.
 Make sure to set batch size appropriately for number of images.  Epochs
 are calculated from batch size.
 
 Example usage:
-python train.py --dataset Custom --dataset_root data/image_data/train --cuda True --save_folder weights --num_workers 0 --start_iter 0 --batch_size 1
+python train.py --dataset Custom --dataset_root data/image_data/train --save_folder weights --num_workers 0 --start_iter 0 --batch_size 1
 
 
 Currently, model is not checkpointed and the final is saved in the folder specified
 as Custom.pth.
 """
 
-from data import *
-from data.config import custom
+from data import custom, VOC_ROOT, CUSTOM_ROOT, detection_collate
+from data.custom import CustomDetection
+from data.config import custom, MEANS
 from utils.augmentations import SSDAugmentation
 from layers.modules import MultiBoxLoss
 from ssd import build_ssd
@@ -24,11 +24,13 @@ import torch
 from torch.autograd import Variable
 import torch.nn as nn
 import torch.optim as optim
+from torch.optim import lr_scheduler
 import torch.backends.cudnn as cudnn
 import torch.nn.init as init
 import torch.utils.data as data
 import numpy as np
 import argparse
+import copy
 
 
 def str2bool(v):
@@ -52,8 +54,6 @@ parser.add_argument('--start_iter', default=0, type=int,
                     help='Resume training at this iter')
 parser.add_argument('--num_workers', default=4, type=int,
                     help='Number of workers used in dataloading')
-parser.add_argument('--cuda', default=True, type=str2bool,
-                    help='Use CUDA to train model')
 parser.add_argument('--lr', '--learning-rate', default=1e-3, type=float,
                     help='initial learning rate')
 parser.add_argument('--momentum', default=0.9, type=float,
@@ -68,104 +68,21 @@ parser.add_argument('--save_folder', default='weights/',
                     help='Directory for saving checkpoint models')
 args = parser.parse_args()
 
+# If GPU is available use it, otherwise CPU
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+print('On {} device'.format(device))
 
 if torch.cuda.is_available():
-    if args.cuda:
-        torch.set_default_tensor_type('torch.cuda.FloatTensor')
-    if not args.cuda:
-        print("WARNING: It looks like you have a CUDA device, but aren't " +
-              "using CUDA.\nRun with --cuda for optimal training speed.")
-        torch.set_default_tensor_type('torch.FloatTensor')
+    torch.set_default_tensor_type('torch.cuda.FloatTensor')
 else:
     torch.set_default_tensor_type('torch.FloatTensor')
 
 if not os.path.exists(args.save_folder):
     os.mkdir(args.save_folder)
 
-# If GPU is available use it, otherwise CPU
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-print('On {} device'.format(device))
-
-def train():
-    if args.dataset == 'COCO':
-        if args.dataset_root == VOC_ROOT:
-            if not os.path.exists(COCO_ROOT):
-                parser.error('Must specify dataset_root if specifying dataset')
-            print("WARNING: Using default COCO dataset_root because " +
-                  "--dataset_root was not specified.")
-            args.dataset_root = COCO_ROOT
-        cfg = coco
-        dataset = COCODetection(root=args.dataset_root,
-                                transform=SSDAugmentation(cfg['min_dim'],
-                                                          MEANS))
-    elif args.dataset == 'VOC':
-        if args.dataset_root == VOC_ROOT:
-            parser.error('Must specify dataset if specifying dataset_root')
-        cfg = voc
-        dataset = VOCDetection(root=args.dataset_root,
-                               transform=SSDAugmentation(cfg['min_dim'],
-                                                         MEANS))
-    elif args.dataset == 'Custom':
-        if args.dataset_root == CUSTOM_ROOT:
-            parser.error('Must specify dataset if specifying dataset_root')
-        cfg = custom
-        dataset = CustomDetection(root=args.dataset_root,
-                               transform=SSDAugmentation(cfg['min_dim'],
-                                                         MEANS))
-
-    if args.visdom:
-        import visdom
-        viz = visdom.Visdom()
-
-    ssd_net = build_ssd('train', cfg['min_dim'], cfg['num_classes'])
-    net = ssd_net
-
-    # if args.cuda:
-    #     net = torch.nn.DataParallel(ssd_net)
-    #     cudnn.benchmark = True
-
-    if args.resume:
-        print('Resuming training, loading {}...'.format(args.resume))
-        ssd_net.load_weights(args.resume)
-    else:
-        vgg_weights = torch.load(os.path.join(args.save_folder, args.basenet))
-        print('Loading base network...')
-        ssd_net.vgg.load_state_dict(vgg_weights)
-
-    net = net.to(device)
-
-    if not args.resume:
-        print('Initializing weights...')
-        # initialize newly added layers' weights with xavier method
-        ssd_net.extras.apply(weights_init)
-        ssd_net.loc.apply(weights_init)
-        ssd_net.conf.apply(weights_init)
-
-    optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=args.momentum,
-                          weight_decay=args.weight_decay)
-    criterion = MultiBoxLoss(cfg['num_classes'], 0.5, True, 0, True, 3, 0.5,
-                             False, args.cuda)
-
-    net.train()
-    # loss counters
-    loc_loss = 0
-    conf_loss = 0
-    epoch = 0
-    print('Loading the dataset...')
-
-    epoch_size = len(dataset) // args.batch_size
-    print('Training SSD on:', dataset.name)
-    print('Using the specified args:')
-    print(args)
-
-    step_index = 0
-
-    if args.visdom:
-        vis_title = 'SSD.PyTorch on ' + dataset.name
-        vis_legend = ['Loc Loss', 'Conf Loss', 'Total Loss']
-        iter_plot = create_vis_plot('Iteration', 'Loss', vis_title, vis_legend)
-        epoch_plot = create_vis_plot('Epoch', 'Loss', vis_title, vis_legend)
-
+def train_model(model, criterion, optimizer, scheduler, dataset, num_epochs=25, phase='train'):
+    best_model_wts = copy.deepcopy(model.state_dict())
+    best_loss = 1e10
     data_loader = data.DataLoader(dataset,
                                   batch_size=args.batch_size,
                                   num_workers=args.num_workers,
@@ -173,62 +90,73 @@ def train():
                                   collate_fn=detection_collate,
                                   pin_memory=True)
     print('Data loader length...', len(data_loader))
+    
 
-    # create batch iterator
-    batch_iterator = iter(data_loader)
-    for iteration in range(args.start_iter, cfg['max_iter']):
-        if args.visdom and iteration != 0 and (iteration % epoch_size == 0):
-            update_vis_plot(epoch, loc_loss, conf_loss, epoch_plot, None,
-                            'append', epoch_size)
-            # reset epoch loss counters
-            loc_loss = 0
-            conf_loss = 0
-            epoch += 1
+    for epoch in range(num_epochs):
+        # Reset iterations
+        batch_iterator = iter(data_loader)
 
-        if iteration in cfg['lr_steps']:
-            step_index += 1
-            adjust_learning_rate(optimizer, args.gamma, step_index)
+        print('Epoch {}/{}'.format(epoch, num_epochs - 1))
+        print('-' * 10)
 
-        # load train data
-        try:
-            images, targets = next(batch_iterator)
-        except StopIteration as e:
-            print('Ending iterations over data')
-            break
+        # Each epoch has a training and validation phase
+        for phase in ['train', 'val']:
+            if phase == 'train':
+                scheduler.step()
+                model.train()  # Set model to training mode
+            else:
+                model.eval()   # Set model to evaluate mode
 
+            running_loss = 0.0
+            running_corrects = 0
 
-        with torch.no_grad():
-            images = Variable(images.to(device))
-            targets = [Variable(ann.to(device)) for ann in targets]
+            # Iterate over data.
+            batch_size = args.batch_size
+            epoch_steps = len(data_loader) // batch_size
+            for i in range(epoch_steps):
+                # load train data
+                inputs, labels = next(batch_iterator)           
+                inputs = inputs.to(device)
 
-        # forward
-        t0 = time.time()
-        out = net(images)
-        # backprop
-        optimizer.zero_grad()
-        loss_l, loss_c = criterion(out, targets)
-        loss = loss_l + loss_c
-        loss.backward()
-        optimizer.step()
-        t1 = time.time()
-        loc_loss += loss_l.data.item()
-        conf_loss += loss_c.data.item()
+                # zero the parameter gradients
+                optimizer.zero_grad()
 
-        if iteration % 2 == 0:
-            print('timer: %.4f sec.' % (t1 - t0))
-            print('iter ' + repr(iteration) + ' || Loss: %.4f ||' % (loss.data.item()), end=' ')
+                # forward
+                # track history if only in train
+                with torch.set_grad_enabled(phase == 'train'):
+                    outputs = model(inputs)
+                    loss_l, loss_c = criterion(outputs, labels, debug=False)
+                    loss = loss_l + loss_c
+                    # loss = criterion(outputs, labels)
 
-        if args.visdom:
-            update_vis_plot(iteration, loss_l.data[0], loss_c.data[0],
-                            iter_plot, epoch_plot, 'append')
+                    # backward + optimize only if in training phase
+                    if phase == 'train':
+                        loss.backward()
+                        optimizer.step()
 
-        if iteration != 0 and iteration % 5000 == 0:
-            print('Saving state, iter:', iteration)
-            torch.save(ssd_net.state_dict(), 'weights/ssd300_COCO_' +
-                       repr(iteration) + '.pth')
-    torch.save(ssd_net.state_dict(),
-               os.path.join(args.save_folder, args.dataset + '.pth'))
+                # statistics
+                running_loss += loss.item() * inputs.size(0)
 
+            epoch_loss = running_loss / (batch_size * epoch_steps)
+
+            print('{} Loss: {:.4f}'.format(
+                phase, epoch_loss))
+
+            # deep copy the model
+            if phase == 'val' and epoch_loss < best_loss:
+                best_loss = epoch_loss
+                best_model_wts = copy.deepcopy(model.state_dict())
+
+        print()
+
+    time_elapsed = time.time() - since
+    print('Training complete in {:.0f}m {:.0f}s'.format(
+        time_elapsed // 60, time_elapsed % 60))
+    print('Best val loss: {:4f}'.format(best_loss))
+
+    # load best model weights
+    model.load_state_dict(best_model_wts)
+    return model
 
 def adjust_learning_rate(optimizer, gamma, step):
     """Sets the learning rate to the initial LR decayed by 10 at every
@@ -283,4 +211,37 @@ def update_vis_plot(iteration, loc, conf, window1, window2, update_type,
 
 
 if __name__ == '__main__':
-    train()
+    # train()
+
+    if args.dataset == 'VOC':
+        if args.dataset_root == VOC_ROOT:
+            parser.error('Must specify dataset if specifying dataset_root')
+        cfg = voc
+        dataset = VOCDetection(root=args.dataset_root,
+                               transform=SSDAugmentation(cfg['min_dim'],
+                                                         MEANS))
+    elif args.dataset == 'Custom':
+        if args.dataset_root == CUSTOM_ROOT:
+            parser.error('Must specify dataset if specifying dataset_root')
+        cfg = custom
+        dataset = CustomDetection(root=args.dataset_root,
+                               transform=SSDAugmentation(cfg['min_dim'],
+                                                         MEANS))
+
+    since = time.time()
+
+    ssd_net = build_ssd('train', cfg['min_dim'], cfg['num_classes'])
+    model_ft = ssd_net
+
+    # criterion = nn.BCELoss()
+    criterion = MultiBoxLoss(cfg['num_classes'], 0.5, True, 0, True, 3, 0.5,
+                             False)
+
+    # Observe that all parameters are being optimized
+    optimizer_ft = optim.SGD(model_ft.parameters(), lr=0.001, momentum=0.9)
+
+    # Decay LR by a factor of 0.1 every 7 epochs
+    exp_lr_scheduler = lr_scheduler.StepLR(optimizer_ft, step_size=7, gamma=0.1)
+
+    model_ft = train_model(model_ft, criterion, optimizer_ft, exp_lr_scheduler, 
+        dataset=dataset, num_epochs=25, phase='train')

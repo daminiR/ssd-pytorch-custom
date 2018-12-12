@@ -456,16 +456,16 @@ def voc_eval(detpath,
         jmax = np.argmax(np.asarray(overlaps))
         print('jmax ', jmax)
 
-            if ovmax > ovthresh:
-                # if not R['difficult'][jmax]:
-                if len(R['det']) < jmax:
-                    print('true pos!')
-                    tp[d] = 1.
-                    R['det'][jmax] = 1
-                else:
-                    fp[d] = 1.
+        if ovmax > ovthresh:
+            # if not R['difficult'][jmax]:
+            if len(R['det']) < jmax:
+                print('true pos!')
+                tp[d] = 1.
+                R['det'][jmax] = 1
             else:
                 fp[d] = 1.
+        else:
+            fp[d] = 1.
 
         # compute precision recall
         fp = np.cumsum(fp)

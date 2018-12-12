@@ -3,9 +3,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
-from data import coco as cfg
-from ..box_utils import match, log_sum_exp
+from option.config import v2 as cfg
+from utils.box_utils import match, log_sum_exp
 
+
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 class MultiBoxLoss(nn.Module):
     """SSD Weighted Loss Function
@@ -31,11 +33,8 @@ class MultiBoxLoss(nn.Module):
     """
 
     def __init__(self, num_classes, overlap_thresh, prior_for_matching,
-                 bkg_label, neg_mining, neg_pos, neg_overlap, encode_target,
-                 use_gpu=True):
+                 bkg_label, neg_mining, neg_pos, neg_overlap, encode_target):
         super(MultiBoxLoss, self).__init__()
-        self.use_gpu = use_gpu
-        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         self.num_classes = num_classes
         self.threshold = overlap_thresh
         self.background_label = bkg_label
@@ -46,7 +45,7 @@ class MultiBoxLoss(nn.Module):
         self.neg_overlap = neg_overlap
         self.variance = cfg['variance']
 
-    def forward(self, predictions, targets):
+    def forward(self, predictions, targets, debug):
         """Multibox Loss
         Args:
             predictions (tuple): A tuple containing loc preds, conf preds,
@@ -55,14 +54,16 @@ class MultiBoxLoss(nn.Module):
                 loc shape: torch.size(batch_size,num_priors,4)
                 priors shape: torch.size(num_priors,4)
 
-            targets (tensor): Ground truth boxes and labels for a batch,
+            ground_truth (tensor): Ground truth boxes and labels for a batch,
                 shape: [batch_size,num_objs,5] (last idx is the label).
         """
         loc_data, conf_data, priors = predictions
+        if debug:
+            assert loc_data.size(1) == priors.size(0), 'loc data vs prior SIZE MISMATCH'
+
         num = loc_data.size(0)
-        priors = priors[:loc_data.size(1), :]
+        priors = priors[:loc_data.size(1), :]   # it is the multi-gpu thing
         num_priors = (priors.size(0))
-        num_classes = self.num_classes
 
         # match priors (default boxes) and ground truth boxes
         loc_t = torch.Tensor(num, num_priors, 4)
@@ -73,14 +74,17 @@ class MultiBoxLoss(nn.Module):
             defaults = priors.data
             match(self.threshold, truths, defaults, self.variance, labels,
                   loc_t, conf_t, idx)
-        loc_t = loc_t.to(self.device)
-        conf_t = conf_t.to(self.device)
+        loc_t = loc_t.to(device)
+        conf_t = conf_t.to(device)
         # wrap targets
-        loc_t = Variable(loc_t, requires_grad=False)
-        conf_t = Variable(conf_t, requires_grad=False)
+        with torch.set_grad_enabled(True):
+            loc_t = torch.tensor(loc_t)
+            conf_t = torch.tensor(conf_t)
 
         pos = conf_t > 0
-        num_pos = pos.sum(dim=1, keepdim=True)
+        # pos_tmp = pos.clone()
+        # pos = pos.view(-1, 1)
+        num_pos = pos.sum(-1, keepdim=True)
 
         # Localization Loss (Smooth L1)
         # Shape: [batch,num_priors,4]
@@ -91,14 +95,15 @@ class MultiBoxLoss(nn.Module):
 
         # Compute max conf across batch for hard negative mining
         batch_conf = conf_data.view(-1, self.num_classes)
+
         loss_c = log_sum_exp(batch_conf) - batch_conf.gather(1, conf_t.view(-1, 1))
 
         # Hard Negative Mining
-        loss_c[pos.view(-1, 1)] = 0  # filter out pos boxes for now UPDATED
+        loss_c[pos.view(-1, 1)] = 0  # filter out pos boxes for now
         loss_c = loss_c.view(num, -1)
         _, loss_idx = loss_c.sort(1, descending=True)
         _, idx_rank = loss_idx.sort(1)
-        num_pos = pos.view(1, -1).long().sum(1, keepdim=True) # UPDATED
+        num_pos = pos.long().sum(1, keepdim=True)
         num_neg = torch.clamp(self.negpos_ratio*num_pos, max=pos.size(1)-1)
         neg = idx_rank < num_neg.expand_as(idx_rank)
 
@@ -109,9 +114,8 @@ class MultiBoxLoss(nn.Module):
         targets_weighted = conf_t[(pos+neg).gt(0)]
         loss_c = F.cross_entropy(conf_p, targets_weighted, size_average=False)
 
-        # Sum of losses: L(x,c,l,g) = (Lconf(x, c) + αLloc(x,l,g)) / N
-
-        N = num_pos.data.sum().float() # UPDATED
-        loss_l /= N
-        loss_c /= N
+        # Sum of losses: L(x,c,l,g) = (L_conf(x,c) + \alpha *L_loc(x,l,g)) / N
+        N = num_pos.sum()
+        loss_l /= N.float()
+        loss_c /= N.float()
         return loss_l, loss_c
