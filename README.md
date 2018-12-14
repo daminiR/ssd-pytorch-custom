@@ -1,17 +1,10 @@
-**IMPORTANT NOTE**:  This project is for research and is not stable.  A note will be posted here for when it is ready for more general use.  Issues and/or Pull Requests are most welcome!
+**IMPORTANT NOTE**:  This project is for research and is not entirely stable, yet.  A note will be posted here for when it is ready for more general use.  Issues and/or Pull Requests are most welcome!
 
-## Quickstart
-
-1.  Install Python packages from `requirements.txt`
-2.  Setup and enviroment with an NVIDIA GPU and CUDA 9.0
-1. Label data with VGG Image Annotator using the rectangle option (we are doing object detection here to create a tiny SSD model for devices) and place in `data/image_data/train` (images and via `.json` file)
-2.  Run the training script, e.g.,
-    `python train.py --dataset Custom --dataset_root data/image_data/train --cuda True --save_folder weights --num_workers 0 --start_iter 0 --batch_size 1`
-`
+## Notes
 
 ## Quick Note
 
-This PyTorch for SSD update is a staging environment for changes to the original work and, itself, a work in progress.  It is directly based on https://github.com/amdegroot/ssd.pytorch to which, in the near future, a custom dataset feature and other improvements will be contributed as a PR.
+This PyTorch for SSD update is a staging environment for changes to the original work and, itself, a work in progress.  It is a remake of https://github.com/amdegroot/ssd.pytorch and https://github.com/hli2020/object_detection.
 
 Added to original repo:
 
@@ -20,23 +13,41 @@ Added to original repo:
 * Added the latest recommendation for specifying a GPU/CUDA device (`.to(device`) for nets and variables
 * Templated structure for train and test data and dealing with more consistently in code
 
-In the works:
+It has been tested with PyTorch 0.4.1 and a single class.
 
-* [ ] Remove `'max_iter': 13, # number of training boxes id'd / batch_size` (e.g.) from `config.py` and use of `cfg['max_iter']` in `train.py` and make this built-in calc
-* [ ] Update the usage of `args.cuda` (`args.cuda = not args.no_cuda and torch.cuda.is_available()` or similar)
-* [ ] Generalize custom data loader for multiple annotators (as in `custom.py` which uses the [VGG Image Annotator](http://www.robots.ox.ac.uk/~vgg/software/via/))
-  * [ ] Reader for Open Images v4 boxes format(http://www.robots.ox.ac.uk/~vgg/software/via/)
+## Quickstart
+
+1.  Install Python packages from `requirements.txt`
+2. Label data with VGG Image Annotator using the rectangle option (we are doing object detection here to create a tiny SSD model for devices) and place in `data/image_data/train` (images and via `.json` file)
+3.  Start the Visdom server (to view results - test only right now) with:  `python -m visdom.server -port 8090`
+3.  Run the training script, e.g.,
+    `python train.py --experiment_name ssd_custom --dataset Custom --base_save_folder run --num_workers 0 --ssd_dim 300 --batch_size 4 --lr 1e-4 --max_epoch 50 --pretrain_model weights/vgg16_reducedfc.pth`
+    * The learning rate **may need to be adjusted**, larger or smaller, otherwise `nan`'s are produced in losses.
+    * More epochs may need to be added for better performance.
+    * The learning rate scheduler may need to adjusted in the `train.py` file.
+3.  Test model with the test script (if retesting, may need to delete `test` folder, for detections to run again), e.g.,
+    `python test.py --experiment_name ssd_custom --dataset Custom --base_save_folder run --num_workers 0 --ssd_dim 300 --trained_model run/ssd_custom/train/debug_ssd300_CUSTOM_epoch_49_iter_3.pth --prior_config custom --conf_thresh 0.05`
+4.  Navigate to `http://localhost:8090` to view results with the Visdom server.
+
+## Status
+
+* [ ] Clean up files - remove any not needed
+* [ ] Custom data loader for multiple annotators (as in `custom.py`)
+  * [x] VGG Image Annotator (http://www.robots.ox.ac.uk/~vgg/software/via/)
+  * [ ] Reader for Open Images v4 boxes format
   * [ ] Reader for Visual Object Tagging Tool (https://github.com/Microsoft/VoTT)
-* [ ] Add better docstrings and comments to `train.py`, `test.py` and `eval.py`
+* [x] Fix the NaN loss issue for `train.py` on custom data (note:  lowering the learning rate can elimate this as well)
+* [x] Remove the usage of `args.cuda` (`args.cuda = not args.no_cuda and torch.cuda.is_available()` or similar)
+* [ ] Add better docstrings and comments to `train.py` and `test.py`
 * [ ] Ensure still functioning on original COCO and VOC data as per original repo
 * [ ] Update other files:
-  * [ ] `eval.py`
+  * [x] `test.py`
     * [ ] Get rid of `imgsetpath = os.path.join(args.dataset_root, 'imagenames.txt')` in favor of just glob
-  * [ ] `demo` code
+  * [ ] Working `live.py` code
 
 For custom, make sure to update the number of iterations in the `config.py` (`max_iter`) (if minibatch size is 1, `max_iter` equals the number of input images in the training set).
 
-Here is the original project's excellent Readme as of 2018-03-30 (for Installation, Models, etc.):
+**Here is the original project's excellent Readme as of 2018-03-30 (for Installation, Models, etc.):**
 
 # SSD: Single Shot MultiBox Object Detector, in PyTorch
 A [PyTorch](http://pytorch.org/) implementation of [Single Shot MultiBox Detector](http://arxiv.org/abs/1512.02325) from the 2016 paper by Wei Liu, Dragomir Anguelov, Dumitru Erhan, Christian Szegedy, Scott Reed, Cheng-Yang, and Alexander C. Berg.  The official and original Caffe code can be found [here](https://github.com/weiliu89/caffe/tree/ssd).

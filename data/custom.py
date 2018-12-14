@@ -1,4 +1,11 @@
-from .config import HOME
+"""
+Custom dataset implementation and related functions.
+
+Note, VOC format of a bounding box is [left,top,right,bottom] so
+we need to return ours in this format.
+"""
+
+# from  option.config import HOME
 import os
 import os.path as osp
 import sys
@@ -12,12 +19,14 @@ import json
 import glob
 import skimage
 
-CUSTOM_ROOT = osp.join(HOME, 'data', 'image_data')
-print(HOME)
+CUSTOM_ROOT = osp.join('data', 'image_data')
 # Classes do not explicitley have BG here
 CUSTOM_CLASSES = ['object']
 
+MEANS = (104, 117, 123)
+
 def center_to_corner(center_bbox):
+    """Convert [x_c, y_c, width, height] to [xmin, ymin, xmax, ymax]"""
     # xmin = x_c - (1/2)*width
     center_bbox[0] = (center_bbox[0] - center_bbox[2]/2)
     # ymin = y_c - (1/2)*height
@@ -60,7 +69,7 @@ def get_targets(label_file):
 
 
 class CustomAnnotationTransform(object):
-    """Transforms a COCO annotation into a Tensor of bbox coords and label index
+    """Transforms a custom annotation into a Tensor of bbox coords and label index
     Initilized with a dictionary lookup of classnames to indexes
     """
     def __init__(self, train=True):
@@ -90,7 +99,8 @@ class CustomAnnotationTransform(object):
             bbox[1] = elem['y']
             bbox[2] = bbox[0] + elem['width']
             bbox[3] = bbox[1] + elem['height']
-
+            # bbox = center_to_corner([elem['x'], elem['y'], elem['width'], elem['height']])
+            
             final_box = list(np.array(bbox)/scale)
             final_box.append(custom_class)
             res += [final_box]  # [xmin, ymin, xmax, ymax, label_idx]
@@ -110,13 +120,17 @@ class CustomDetection(data.Dataset):
 
     def __init__(self, root, image_set=None, transform=None,
                  target_transform=CustomAnnotationTransform(), dataset_name='CUSTOM',
-                 targets=None):
+                 targets=None, phase=None):
         self.transform = transform
         self.target_transform = target_transform
         self.ids = target_transform.ids
         self.name = dataset_name
         self.targets = target_transform.targets
-        self.root = os.getcwd() + os.sep + root
+        self.root = root
+        self.phase = phase
+        # Add background
+        self.num_classes = len(CUSTOM_CLASSES) + 1
+        self.class_names = CUSTOM_CLASSES
 
     def __getitem__(self, index):
         """
@@ -126,7 +140,7 @@ class CustomDetection(data.Dataset):
             tuple: Tuple (image, target).
                    target is the object returned by ``coco.loadAnns``.
         """
-        im, gt, h, w, _ = self.pull_item(index)
+        im, gt, h, w, _, _ = self.pull_item(index)
         return im, gt
 
     def __len__(self):
@@ -143,22 +157,23 @@ class CustomDetection(data.Dataset):
         img_id = self.ids[index]
         target = self.targets[img_id]
 
-        path = osp.join(self.root, img_id)
+        path = osp.join(self.root, self.phase, img_id)
         assert osp.exists(path), 'Image path does not exist: {}'.format(path)
 
-        img = cv2.imread(osp.join(self.root, path))
-        height, width, _ = img.shape
+        orig_im = cv2.imread(path)
+        height, width, _ = orig_im.shape
+        img = orig_im
         if self.target_transform is not None:
             target = self.target_transform(target, width, height)
         if self.transform is not None:
             target = np.array(target)
-            img, boxes, labels = self.transform(img, target[:, :4],
+            img, boxes, labels = self.transform(orig_im, target[:, :4],
                                                 target[:, 4])
             # to rgb
-            img = img[:, :, (2, 1, 0)]
+            # img = img[:, :, (2, 1, 0)]
 
             target = np.hstack((boxes, np.expand_dims(labels, axis=1)))
-        return torch.from_numpy(img).permute(2, 0, 1), target, height, width, img_id
+        return torch.from_numpy(img).permute(2, 0, 1), target, height, width, orig_im, img_id
 
     def pull_image(self, index):
         '''Returns the original image object at index in PIL form

@@ -8,6 +8,7 @@ class TestOptions(BaseOptions):
 
         self.parser.add_argument('--trained_model', default='ssd512_COCO_epoch_20_iter_29570', type=str)
         self.parser.add_argument('--subname', default='', type=str)
+        self.parser.add_argument('--log_file_name', default='log.txt', type=str)
 
         self.parser.add_argument('--soft_nms', type=int, default=-1)  # set -1 if not used
         self.parser.add_argument('--conf_thresh', default=0.05, type=float, help='detection confidence threshold')

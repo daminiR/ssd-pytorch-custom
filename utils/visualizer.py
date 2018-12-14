@@ -1,7 +1,6 @@
 from .util import *
 import numpy as np
 from matplotlib import pyplot as plt
-#import plotly.tools as tls
 from scipy.misc import imread
 plt.switch_backend('agg')
 
@@ -24,7 +23,8 @@ class Visualizer(object):
             # TODO: visualize in the training process
             if hasattr(dataset, 'num_classes'):
                 self.num_classes = dataset.num_classes
-                self.class_name = dataset.COCO_CLASSES_names
+                # TODO add COCO and VOC options
+                self.class_name = dataset.class_names
                 self.color = plt.cm.hsv(np.linspace(0, 1, (self.num_classes-1))).tolist()
                 # for both train and test
                 self.save_det_res_path = os.path.join(self.opt.save_folder, 'det_result')
@@ -207,15 +207,6 @@ class Visualizer(object):
         # })
         result_im = imread(result_file)
         return result_im
-
-# idx = 2 if self.opt.model == 'default' or self.opt.add_gan_loss else 1
-# for label, image_numpy in images.items():
-#     self.vis.image(image_numpy.transpose([2, 0, 1]), opts=dict(title=label),
-#                    win=self.display_win_id + idx)
-#     idx += 1
-# if args.use_visdom:
-#     random_batch_index = np.random.randint(images.size(0))
-#     args.vis.image(images.data[random_batch_index].cpu().numpy())
 
     def plot_hist(self, stats_data, info, all_sample=False):
         # TODO: complete the histogram visualization

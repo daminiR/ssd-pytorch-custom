@@ -1,7 +1,7 @@
 import torch
 from torch.autograd import Function
-from ..box_utils import decode, nms
-from data import voc as cfg
+from option.config import custom as cfg
+from utils.box_utils import decode, nms, soft_nms
 
 # Assign to either CPU or GPU as device
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -12,16 +12,17 @@ class Detect(Function):
     scores and threshold to a top_k number of output predictions for both
     confidence score and locations.
     """
-    def __init__(self, num_classes, bkg_label, top_k, conf_thresh, nms_thresh):
+    def __init__(self, num_classes, bkg_label, top_k, conf_thresh, nms_thresh, soft_nms=-1):
         self.num_classes = num_classes
         self.background_label = bkg_label
         self.top_k = top_k
-        # Parameters used in nms.
         self.nms_thresh = nms_thresh
         if nms_thresh <= 0:
             raise ValueError('nms_threshold must be non negative.')
+        self.soft_nms = soft_nms
         self.conf_thresh = conf_thresh
         self.variance = cfg['variance']
+        self.output = torch.zeros(1, self.num_classes, self.top_k, 5)
 
     def forward(self, loc_data, conf_data, prior_data):
         """
@@ -33,14 +34,17 @@ class Detect(Function):
             prior_data: (tensor) Prior boxes and variances from priorbox layers
                 Shape: [1,num_priors,4]
         """
-        loc_data = loc_data.to(device)
-        prior_data = prior_data.to(device)
         num = loc_data.size(0)  # batch size
         num_priors = prior_data.size(0)
-        output = torch.zeros(num, self.num_classes, self.top_k, 5)
-        print(conf_data.size())
-        conf_preds = conf_data.view(num, num_priors,
-                                    self.num_classes).transpose(2, 1)
+        self.output.zero_()
+        if num == 1:
+            # size batch x num_classes x num_priors
+            conf_data = conf_data.view(1, -1)
+            conf_preds = conf_data.t().contiguous().unsqueeze(0)
+        else:
+            conf_preds = conf_data.view(num, num_priors,
+                                        self.num_classes).transpose(2, 1)
+            self.output.expand_(num, self.num_classes, self.top_k, 5)
 
         # Decode predictions into bboxes.
         for i in range(num):
@@ -55,15 +59,18 @@ class Detect(Function):
                     continue
                 l_mask = c_mask.unsqueeze(1).expand_as(decoded_boxes)
                 boxes = decoded_boxes[l_mask].view(-1, 4)
-                # idx of highest scoring and non-overlapping boxes per class
-                ids, count = nms(boxes, scores, self.nms_thresh, self.top_k)
-                if count == 0:
+                if len(boxes) == 0:
                     continue
-                output[i, cl, :count] = \
-                    torch.cat((scores[ids[:count]].unsqueeze(1),
-                               boxes[ids[:count]]), 1)
-        flt = output.contiguous().view(num, -1, 5)
-        _, idx = flt[:, :, 0].sort(1, descending=True)
-        _, rank = idx.sort(1)
-        flt[(rank < self.top_k).unsqueeze(-1).expand_as(flt)].fill_(0)
-        return output
+                # idx of highest scoring and non-overlapping boxes per class
+                # NMS
+                if self.soft_nms == -1:
+                    ids, count = nms(boxes, scores, self.nms_thresh, self.top_k)
+                    self.output[i, cl, :count] = \
+                        torch.cat((scores[ids[:count]].unsqueeze(1),
+                                boxes[ids[:count]]), 1)
+                else:
+                    count = boxes.size(0) if boxes.size(0) < self.top_k else self.top_k
+                    new_scores, new_boxes = soft_nms(boxes, scores, self.nms_thresh, self.top_k, type=self.soft_nms)
+                    self.output[i, cl, :count] = torch.cat((new_scores.unsqueeze(1), new_boxes), 1)
+
+        return self.output

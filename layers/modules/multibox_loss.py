@@ -9,6 +9,11 @@ from utils.box_utils import match, log_sum_exp
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
+if torch.cuda.is_available():
+    torch.set_default_tensor_type('torch.cuda.FloatTensor')
+else:
+    torch.set_default_tensor_type('torch.FloatTensor')
+
 class MultiBoxLoss(nn.Module):
     """SSD Weighted Loss Function
     Compute Targets:
@@ -62,12 +67,12 @@ class MultiBoxLoss(nn.Module):
             assert loc_data.size(1) == priors.size(0), 'loc data vs prior SIZE MISMATCH'
 
         num = loc_data.size(0)
-        priors = priors[:loc_data.size(1), :]   # it is the multi-gpu thing
+        priors = priors[:loc_data.size(1), :].to(device)   # it is the multi-gpu thing
         num_priors = (priors.size(0))
 
         # match priors (default boxes) and ground truth boxes
-        loc_t = torch.Tensor(num, num_priors, 4)
-        conf_t = torch.LongTensor(num, num_priors)
+        loc_t = torch.Tensor(num, num_priors, 4).to(device)
+        conf_t = torch.LongTensor(num, num_priors).to(device)
         for idx in range(num):
             truths = targets[idx][:, :-1].data
             labels = targets[idx][:, -1].data

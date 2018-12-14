@@ -17,17 +17,18 @@ class BaseOptions(object):
         self.parser.add_argument('--port_id', default=8090, type=int)
 
         # model params
-        self.parser.add_argument('--ssd_dim', default=512, type=int)
+        self.parser.add_argument('--ssd_dim', default=300, type=int)
         self.parser.add_argument('--prior_config', default='v2_512', type=str)
 
     def setup_config(self):
         """pre-process stuff for both train and test"""
-        if hasattr(self.opt, 'subname'):
-            # for test folder name
-            _temp = '' if self.opt.subname == '' else '_'
-            suffix = self.opt.trained_model + _temp + self.opt.subname
-        else:
-            suffix = ''
+        # if hasattr(self.opt, 'subname'):
+        #     # for test folder name
+        #     _temp = '' if self.opt.subname == '' else '_'
+        #     suffix = self.opt.trained_model + _temp + self.opt.subname
+        # else:
+        #     suffix = ''
+        suffix = ''
         self.opt.save_folder = os.path.join(self.opt.base_save_folder,
                                             self.opt.experiment_name,
                                             self.opt.phase, suffix)
@@ -54,9 +55,9 @@ class BaseOptions(object):
                 self.opt.loss_freq = 200    # in iter unit
                 self.opt.save_freq = 5      # in epoch unit
         else:
-            self.opt.trained_model = os.path.join(self.opt.base_save_folder,
-                                                  self.opt.experiment_name,
-                                                  'train', self.opt.trained_model+'.pth')
+            # self.opt.trained_model = os.path.join(self.opt.base_save_folder,
+            #                                       self.opt.experiment_name,
+            #                                       'train', self.opt.trained_model)
             if not os.path.isfile(self.opt.trained_model):
                 print('trained model not exist! {:s}'.format(self.opt.trained_model))
                 quit()

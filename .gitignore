@@ -5,6 +5,7 @@
 *.png
 *.PNG
 
+log.txt
 summit_posts_urls.txt
 download_helmet_data.py
 helmets/
@@ -12,7 +13,7 @@ helmets/
 test/
 train/
 image_data*
-
+run/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
