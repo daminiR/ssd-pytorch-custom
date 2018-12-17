@@ -1,7 +1,9 @@
 import pickle
 from .util import *
 from data.custom import CUSTOM_ROOT, get_targets
+from .visualizer import Visualizer, print_log
 import cv2
+from matplotlib import pyplot as plt
 
 try:
     from data.setup_dset import VOC_CLASSES as labelmap
@@ -182,7 +184,6 @@ def _voc_eval(dataset, detfile, annopath, imagesetfile, classname,
                                     'det': det}
 
     # read dets
-    # detfile = detpath.format(classname)
     print(detfile)
     with open(detfile, 'r') as f:
         lines = f.readlines()
@@ -288,12 +289,12 @@ def _voc_ap(rec, prec, use_07_metric=True):
     return ap
 
 
-def write_voc_results_file(save_folder, all_boxes, dataset):
-    for cls_ind, cls in enumerate(labelmap):
-        # print('Writing {:s} VOC results file'.format(cls))
+def write_voc_results_file(args, all_boxes, dataset):
+    # color = plt.cm.hsv(np.linspace(0, 1, (dataset.num_classes-1))).tolist()
+    for cls_ind, cls_name in enumerate(labelmap):
+        print('Writing {:s} results file'.format(cls_name))
         set_type = 'test'
-        filename = _get_voc_results_file_template(save_folder, set_type, cls)
-        # filename = os.path.join('run', set_type, 'ssd_custom', 'det_' + set_type + '_%s.txt' % (cls))
+        filename = _get_voc_results_file_template(args.save_folder, set_type, cls_name)
         with open(filename, 'wt') as f:
             for im_ind, index in enumerate(dataset.ids):
                 dets = all_boxes[cls_ind + 1][im_ind]
@@ -305,7 +306,6 @@ def write_voc_results_file(save_folder, all_boxes, dataset):
                             format(index, dets[k, -1],
                                    dets[k, 0] + 1, dets[k, 1] + 1,
                                    dets[k, 2] + 1, dets[k, 3] + 1))
-
 
 def do_python_eval(opts):
     prefix = opts.base_save_folder

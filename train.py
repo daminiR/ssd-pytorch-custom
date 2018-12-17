@@ -6,7 +6,7 @@ For help and usage:
 
 Example:
 
-  python train.py --experiment_name ssd_custom --dataset Custom --base_save_folder run --num_workers 0 --ssd_dim 300 --batch_size 4 --pretrain_model weights/vgg16_reducedfc.pth
+  python train.py --experiment_name ssd_custom --dataset Custom --base_save_folder run --num_workers 0 --ssd_dim 300 --batch_size 4 --lr 1e-4 --max_epoch 10 --pretrain_model weights/vgg16_reducedfc.pth
 
 """
 

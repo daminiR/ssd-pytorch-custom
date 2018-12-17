@@ -70,7 +70,9 @@ class Detect(Function):
                                 boxes[ids[:count]]), 1)
                 else:
                     count = boxes.size(0) if boxes.size(0) < self.top_k else self.top_k
-                    new_scores, new_boxes = soft_nms(boxes, scores, self.nms_thresh, self.top_k, type=self.soft_nms)
-                    self.output[i, cl, :count] = torch.cat((new_scores.unsqueeze(1), new_boxes), 1)
+                    new_scores, new_boxes = soft_nms(boxes, scores, self.nms_thresh, 
+                        self.top_k, type=self.soft_nms)
+                    self.output[i, cl, :count] = torch.cat((new_scores.unsqueeze(1), \
+                        new_boxes), 1)
 
         return self.output

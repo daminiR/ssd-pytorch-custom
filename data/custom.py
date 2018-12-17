@@ -74,9 +74,11 @@ class CustomAnnotationTransform(object):
     """
     def __init__(self, train=True):
         if train == True:
-            self.targets = get_targets(osp.join(CUSTOM_ROOT, 'train', 'annot', 'via_region_data.json'))
+            self.targets = get_targets(osp.join(CUSTOM_ROOT, 'train', 'annot', \
+                'via_region_data.json'))
         else:
-            self.targets = get_targets(osp.join(CUSTOM_ROOT, 'test', 'annot', 'via_region_data.json'))
+            self.targets = get_targets(osp.join(CUSTOM_ROOT, 'test', 'annot', \
+                'via_region_data.json'))
         self.ids = list(self.targets.keys())
 
     def __call__(self, target, width, height):
@@ -162,15 +164,13 @@ class CustomDetection(data.Dataset):
 
         orig_im = cv2.imread(path)
         height, width, _ = orig_im.shape
-        img = orig_im
+        img = orig_im.copy()
         if self.target_transform is not None:
             target = self.target_transform(target, width, height)
         if self.transform is not None:
             target = np.array(target)
             img, boxes, labels = self.transform(orig_im, target[:, :4],
                                                 target[:, 4])
-            # to rgb
-            # img = img[:, :, (2, 1, 0)]
 
             target = np.hstack((boxes, np.expand_dims(labels, axis=1)))
         return torch.from_numpy(img).permute(2, 0, 1), target, height, width, orig_im, img_id

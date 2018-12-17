@@ -123,9 +123,18 @@ class SSD(nn.Module):
         loc = list()
         conf = list()
 
-        # apply vgg up to conv4_3 relu
-        for k in range(23):
-            x = self.vgg[k](x)
+        # If test phase, don't track gradients
+        if self.phase == 'test':
+            with torch.no_grad():
+                # apply vgg up to conv4_3 relu
+                for k in range(23):
+                    x = self.vgg[k](x)
+        else:
+            # apply vgg up to conv4_3 relu
+            for k in range(23):
+                x = self.vgg[k](x)
+
+
 
         s = self.L2Norm(x)
         sources.append(s)

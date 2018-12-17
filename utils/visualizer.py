@@ -151,21 +151,18 @@ class Visualizer(object):
             name = os.path.basename(os.path.dirname(self.opt.det_file))
             i, total_im, test_time = progress[0], progress[1], progress[2]
             all_boxes, im, im_name = others[0], others[1], others[2]
-
             print_log('[{:s}][{:s}]\tim_detect:\t{:d}/{:d} {:.3f}s'.format(
                 self.opt.experiment_name, name, i, total_im, test_time), self.opt.file_name)
-
-            dets = np.asarray(all_boxes)
-            result_im = self._show_detection_result(im, dets[:, i], im_name)
+            result_im = self._show_detection_result(im, all_boxes, im_name)
             result_im = np.moveaxis(result_im, 2, 0)
             win_id = self.dis_win_id_im + (self.dis_im_cnt % self.dis_im_cycle)
             self.vis.image(result_im, win=win_id,
-                           opts={
-                               'title': 'subfolder: {:s}, name: {:s}'.format(
-                                   os.path.basename(self.opt.save_folder), im_name),
-                               'height': 320,
-                               'width': 400,
-                           })
+                        opts={
+                            'title': 'subfolder: {:s}, name: {:s}'.format(
+                                os.path.basename(self.opt.save_folder), im_name),
+                            'height': 320,
+                            'width': 400,
+                        })
             self.dis_im_cnt += 1
 
     def _show_detection_result(self, im, results, im_name):
@@ -174,28 +171,30 @@ class Visualizer(object):
         plt.axis('off')     # TODO, still the axis remains
         plt.imshow(im)
         currentAxis = plt.gca()
+        result_file = '{:s}/{:s}.png'.format(self.save_det_res_path, im_name[:-4])
 
+        # Skip cls_ind == 0 (background class)
         for cls_ind in range(1, len(results)):
             if results[cls_ind] == []:
                 continue
             else:
-
                 cls_name = self.class_name[cls_ind-1]
                 cls_color = self.color[cls_ind-1]
                 inst_num = results[cls_ind].shape[0]
                 for inst_ind in range(inst_num):
-                    if results[cls_ind][inst_ind, -1] >= self.opt.visualize_thres:
-
+                    if results[cls_ind][inst_ind, -1] >= self.opt.visualize_thresh:
                         score = results[cls_ind][inst_ind, -1]
                         pt = results[cls_ind][inst_ind, 0:-1]
-                        coords = (pt[0], pt[1]), pt[2]-pt[0]+1, pt[3]-pt[1]+1
+                        coords = (pt[0]+1, pt[1]+1), pt[2]-pt[0]+1, pt[3]-pt[1]+1
+                        print('im_name {} inst_ind {} cls_ind {} pt {}'.format(im_name, inst_ind, cls_ind, pt))
                         display_txt = '{:s}: {:.2f}'.format(cls_name, score)
-
-                        currentAxis.add_patch(plt.Rectangle(*coords, fill=False, edgecolor=cls_color, linewidth=2))
-                        currentAxis.text(pt[0], pt[1], display_txt, bbox={'facecolor': cls_color, 'alpha': .5})
+                        currentAxis.add_patch(plt.Rectangle(*coords, fill=False, \
+                            edgecolor=cls_color, linewidth=2))
+                        currentAxis.text(pt[0], pt[1], display_txt, \
+                            bbox={'facecolor': cls_color, 'alpha': .5})
                     else:
                         break
-        result_file = '{:s}/{:s}.png'.format(self.save_det_res_path, im_name[:-4])
+            
 
         plt.savefig(result_file, dpi=300, bbox_inches="tight", pad_inches=0)
         plt.close()

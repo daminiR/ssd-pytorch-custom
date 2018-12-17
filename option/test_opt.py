@@ -15,7 +15,7 @@ class TestOptions(BaseOptions):
         self.parser.add_argument('--top_k', default=300, type=int,
                                  help='The Maximum number of box preds to consider in NMS.')
         self.parser.add_argument('--nms_thresh', default=0.5, type=float)
-        self.parser.add_argument('--visualize_thres', default=0.2, type=float)
+        self.parser.add_argument('--visualize_thresh', default=0.2, type=float)
 
         self.opt = self.parser.parse_args()
         self.opt.phase = 'test'
